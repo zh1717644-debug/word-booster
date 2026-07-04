@@ -1,0 +1,21 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+portable-build/
+*.zip
+
+# Local Netlify folder
+.netlify/
+
+# Local environment and secrets
+.env.local
+**/.env.local
+
+# macOS
+.DS_Store
+
+# Other local projects in this folder
+chat-reply-assistant/
+inspiration-collector/

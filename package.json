@@ -1,0 +1,11 @@
+{
+  "name": "word-booster",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build:dist": "rm -rf dist && mkdir -p dist && cp index.html app.js api.js db.js local-ai.js styles.css manifest.webmanifest service-worker.js dist/ && printf '/api/sentence /.netlify/functions/sentence 200\\n/api/reading /.netlify/functions/reading 200\\n/api/tts /.netlify/functions/tts 200\\n/api/audio /.netlify/functions/audio 200\\n' > dist/_redirects",
+    "preview": "node server.mjs",
+    "start": "node server.mjs",
+    "deploy:anon": "npm run build:dist && npx netlify-cli deploy --prod --dir dist --functions netlify/functions --allow-anonymous"
+  }
+}

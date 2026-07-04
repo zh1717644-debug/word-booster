@@ -1,0 +1,23 @@
+[build]
+  publish = "."
+  functions = "netlify/functions"
+
+[[redirects]]
+  from = "/api/sentence"
+  to = "/.netlify/functions/sentence"
+  status = 200
+
+[[redirects]]
+  from = "/api/reading"
+  to = "/.netlify/functions/reading"
+  status = 200
+
+[[redirects]]
+  from = "/api/tts"
+  to = "/.netlify/functions/tts"
+  status = 200
+
+[[redirects]]
+  from = "/api/audio"
+  to = "/.netlify/functions/audio"
+  status = 200

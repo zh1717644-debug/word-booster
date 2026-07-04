@@ -1,0 +1,10 @@
+{
+  "name": "背单词抽卡",
+  "short_name": "背单词",
+  "description": "拍照提词、抽卡复习、生成例句和语法讲解。",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#f4f7fb",
+  "theme_color": "#3d7bfd",
+  "icons": []
+}

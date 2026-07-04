@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>背单词抽卡</title>
+    <meta name="theme-color" content="#3d7bfd" />
+    <meta
+      name="description"
+      content="拍照识词、单词抽卡、例句生成、语法讲解，一站式英语背词网页。"
+    />
+    <script>
+      if (window.location.protocol === "file:") {
+        window.location.replace("http://127.0.0.1:4173/index.html?v=20260705-6");
+      }
+    </script>
+    <link rel="manifest" href="./manifest.webmanifest?v=20260705-6" />
+    <link rel="stylesheet" href="./styles.css?v=20260705-6" />
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="profile-row">
+          <span class="avatar">W</span>
+          <div>
+            <strong>Word Booster</strong>
+            <small>Study workspace</small>
+          </div>
+        </div>
+        <nav class="side-nav" aria-label="主导航">
+          <a class="active" href="#capture">识别导入</a>
+          <a href="#practice">抽卡练习</a>
+          <a href="#compose">造句语法</a>
+          <a href="#library">单词库</a>
+        </nav>
+        <div class="usage-card">
+          <span>今日进度</span>
+          <strong><span id="streakCount">0</span> 天</strong>
+          <small>连续学习记录</small>
+        </div>
+      </aside>
+
+      <div class="workspace">
+        <header class="topbar">
+          <div>
+            <p class="crumbs">Community / Education / Vocabulary practice</p>
+            <h1>背单词抽卡</h1>
+          </div>
+          <div class="top-actions">
+            <input id="searchInput" type="text" placeholder="搜索单词..." />
+            <button id="exportButton">导出词库</button>
+            <label class="button-like ghost">
+              <input id="importInput" type="file" accept="application/json" hidden />
+              导入词库
+            </label>
+          </div>
+        </header>
+
+        <main class="grid">
+        <section id="capture" class="panel capture-panel">
+          <div class="panel-title">
+            <h2>1. 拍照输入</h2>
+            <span>OCR 识别英文单词</span>
+          </div>
+
+          <div class="upload-box">
+            <p class="upload-title">点击选择图片或直接拍照</p>
+            <input id="imageInput" class="file-input" type="file" accept="image/*" capture="environment" />
+          </div>
+
+          <div class="preview-wrap">
+            <img id="previewImage" alt="预览图片" hidden />
+          </div>
+
+          <button id="scanButton" class="primary">识别图片里的单词</button>
+          <p id="ocrStatus" class="hint">支持拍照、截图、教材页面。</p>
+          <label class="inline-field">
+            <span>识别语言</span>
+            <select id="ocrLanguageSelect">
+              <option value="eng">英文</option>
+              <option value="jpn">日语</option>
+              <option value="jpn+eng" selected>日语 + 英文</option>
+            </select>
+          </label>
+          <p class="hint">拍照识别不需要 API Key；只有“生成例句/语法讲解”才需要模型 Key。</p>
+
+          <label class="textarea-label" for="manualWords">也可以手动补充单词</label>
+          <textarea
+            id="manualWords"
+            rows="5"
+            placeholder="例如：curious, generate, sentence, grammar"
+          ></textarea>
+          <div class="row">
+            <button id="mergeWordsButton">合并到词库</button>
+            <button id="cleanWordsButton" class="ghost">清理噪音</button>
+            <button id="clearWordsButton" class="ghost">清空词库</button>
+          </div>
+        </section>
+
+        <section id="practice" class="panel practice-panel">
+          <div class="panel-title">
+            <h2>2. 抽卡练习</h2>
+            <span>点击翻卡，标记熟悉程度</span>
+          </div>
+
+          <div class="filter-row">
+            <button id="showAllButton" class="ghost">全部</button>
+            <button id="showReviewButton" class="ghost">待复习</button>
+            <button id="showKnownButton" class="ghost">已掌握</button>
+          </div>
+
+          <div id="flashcard" class="flashcard">
+            <div class="flashcard-inner">
+              <div class="flashcard-face front">
+                <p class="card-label">Word</p>
+                <h3 id="cardWord">还没有单词</h3>
+                <p id="cardMeta" class="card-meta">导入后会显示假名或音标</p>
+                <p id="cardSchedule" class="card-meta">复习计划会显示在这里</p>
+              </div>
+              <div class="flashcard-face back">
+                <p class="card-label">Meaning / Notes</p>
+                <p id="cardMeaning">先导入单词，我们就能开始抽卡。</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="row">
+            <button id="speakButton">标读音</button>
+            <button id="shuffleButton">随机抽一张</button>
+            <button id="knownButton" class="success">认识</button>
+            <button id="unknownButton" class="warning">不太会</button>
+          </div>
+
+          <div class="stats">
+            <div><strong id="totalCount">0</strong><span>总单词</span></div>
+            <div><strong id="knownCount">0</strong><span>认识</span></div>
+            <div><strong id="reviewCount">0</strong><span>待复习</span></div>
+            <div><strong id="dueTodayCount">0</strong><span>现在该复习</span></div>
+          </div>
+        </section>
+
+        <section id="compose" class="panel compose-panel">
+          <div class="panel-title">
+            <h2>3. 造句与语法</h2>
+            <span>可切换云端模型或本机 Ollama</span>
+          </div>
+
+          <div class="row">
+            <button id="generateSentenceButton" class="primary">为当前词生成例句</button>
+          </div>
+          <p class="hint">本地模式会调用你电脑里的 Ollama 模型，不再下载浏览器模型。</p>
+
+          <div class="result-box">
+            <h3>例句</h3>
+            <p id="sentenceOutput">选择一个单词后，点击按钮开始生成。</p>
+          </div>
+
+          <div class="result-box">
+            <h3>例句中文</h3>
+            <p id="translationOutput">这里会显示例句中文释义，方便对照记忆。</p>
+          </div>
+
+          <div class="result-box">
+            <h3>语法讲解</h3>
+            <p id="grammarOutput">这里会解释句子结构、时态、词性和关键用法。</p>
+          </div>
+        </section>
+
+        <section id="library" class="panel full library-panel">
+          <div class="panel-title">
+            <h2>4. 单词库</h2>
+            <span>可点击任意单词切换当前卡片</span>
+          </div>
+          <div id="wordBank" class="word-bank"></div>
+        </section>
+
+        <section class="panel full install-panel">
+          <div class="panel-title">
+            <h2>5. 本地 AI</h2>
+            <span>使用你已经安装的 Ollama 模型</span>
+          </div>
+          <div class="local-ai-tools">
+            <label class="inline-field">
+              <span>AI 模式</span>
+              <select id="aiModeSelect">
+                <option value="cloud">云端模型</option>
+                <option value="local">本机 Ollama</option>
+              </select>
+            </label>
+            <label class="inline-field">
+              <span>Ollama 模型</span>
+              <select id="ollamaModelSelect">
+                <option value="">自动选择</option>
+              </select>
+            </label>
+            <button id="downloadLocalAiButton" class="primary">连接本机 Ollama</button>
+          </div>
+          <p id="localAiStatus" class="hint">会自动读取当前电脑 Ollama 里的模型；换电脑后可选择那台电脑已有的模型。</p>
+          <p class="hint">
+            这个网页不依赖云数据库。单词库、复习记录和设置默认存在你当前设备的 IndexedDB 里。
+          </p>
+        </section>
+      </main>
+      </div>
+    </div>
+
+    <script type="module" src="./app.js?v=20260705-6"></script>
+  </body>
+</html>
