@@ -3,19 +3,19 @@ import {
   enrichWordDetails,
   generateReading,
   generateSentenceBundle,
-} from "./api.js?v=20260706-4";
+} from "./api.js?v=20260706-3";
 import {
   loadAppState,
   persistAppState,
   recordReview,
   getReviewStats,
-} from "./db.js?v=20260706-4";
+} from "./db.js?v=20260706-3";
 import {
   generateLocalReading,
   generateLocalSentenceBundle,
   getLocalAiInfo,
   loadLocalAi,
-} from "./local-ai.js?v=20260706-4";
+} from "./local-ai.js?v=20260706-3";
 
 const DEFAULT_STATE = {
   words: [],
@@ -160,9 +160,7 @@ function pickBestJapaneseWord(tokens) {
   const firstToken = normalizedTokens[0] || "";
   return (
     normalizedTokens.find((token) => /[一-龥]/.test(token) && /[ぁ-んァ-ンー]/.test(token)) ||
-    (isKanaToken(firstToken) &&
-    isUsefulJapaneseToken(firstToken) &&
-    normalizedTokens.slice(1).some(isLikelyMeaningToken)
+    (isKanaToken(firstToken) && normalizedTokens.slice(1).some(isLikelyMeaningToken)
       ? firstToken
       : "") ||
     normalizedTokens.find((token) => /[一-龥]/.test(token) && isUsefulJapaneseToken(token)) ||
@@ -182,9 +180,11 @@ function parseJapaneseOcrTokens(tokens) {
     return null;
   }
 
-  const readingToken = tokens
-    .slice(wordIndex + 1)
-    .find((token) => isKanaToken(normalizeJapaneseToken(token)) && normalizeJapaneseToken(token) !== word);
+  const readingToken =
+    tokens
+      .slice(wordIndex + 1)
+      .find((token) => isKanaToken(normalizeJapaneseToken(token)) && normalizeJapaneseToken(token) !== word) ||
+    tokens.find((token, index) => index !== wordIndex && isKanaToken(normalizeJapaneseToken(token)));
   const phonetic = readingToken ? toHiragana(normalizeJapaneseToken(readingToken)) : "";
   const detailStart = readingToken ? tokens.indexOf(readingToken) + 1 : wordIndex + 1;
   let definition = tokens
