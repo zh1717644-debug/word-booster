@@ -3,19 +3,19 @@ import {
   enrichWordDetails,
   generateReading,
   generateSentenceBundle,
-} from "./api.js?v=20260706-1";
+} from "./api.js?v=20260706-2";
 import {
   loadAppState,
   persistAppState,
   recordReview,
   getReviewStats,
-} from "./db.js?v=20260706-1";
+} from "./db.js?v=20260706-2";
 import {
   generateLocalReading,
   generateLocalSentenceBundle,
   getLocalAiInfo,
   loadLocalAi,
-} from "./local-ai.js?v=20260706-1";
+} from "./local-ai.js?v=20260706-2";
 
 const DEFAULT_STATE = {
   words: [],
@@ -139,40 +139,68 @@ function extractOcrTokens(line) {
   ).map((token) => token.trim()).filter(Boolean);
 }
 
+function isLikelyMeaningToken(token) {
+  const value = normalizeJapaneseToken(token);
+  if (!value || isKanaToken(value)) {
+    return false;
+  }
+  if (/^[A-Za-z]/.test(value)) {
+    return true;
+  }
+  return /[一-龥]/.test(value);
+}
+
 function extractWords(text) {
   const matches = text.match(/[A-Za-z][A-Za-z-']+/g) ?? [];
   return [...new Set(matches.map(normalizeWord).filter(isUsefulEnglishToken))];
 }
 
-function parseJapaneseOcrLine(line) {
-  const tokens = extractOcrTokens(line);
+function pickBestJapaneseWord(tokens) {
+  const normalizedTokens = tokens.map(normalizeJapaneseToken).filter(Boolean);
+  return (
+    normalizedTokens.find((token) => /[一-龥]/.test(token) && /[ぁ-んァ-ンー]/.test(token)) ||
+    normalizedTokens.find((token) => /[一-龥]/.test(token) && isUsefulJapaneseToken(token)) ||
+    normalizedTokens.find((token) => isKanaToken(token) && isUsefulJapaneseToken(token)) ||
+    ""
+  );
+}
+
+function parseJapaneseOcrTokens(tokens) {
   if (!tokens.length) {
     return null;
   }
 
-  const wordIndex = tokens.findIndex((token) =>
-    isUsefulJapaneseToken(normalizeJapaneseToken(token))
-  );
+  const word = pickBestJapaneseWord(tokens);
+  const wordIndex = tokens.findIndex((token) => normalizeJapaneseToken(token) === word);
   if (wordIndex === -1) {
     return null;
   }
 
-  const word = normalizeJapaneseToken(tokens[wordIndex]);
-  const readingToken = tokens
-    .slice(wordIndex + 1)
-    .find((token) => isKanaToken(token) && normalizeJapaneseToken(token) !== word);
+  const readingToken =
+    tokens
+      .slice(wordIndex + 1)
+      .find((token) => isKanaToken(normalizeJapaneseToken(token)) && normalizeJapaneseToken(token) !== word) ||
+    tokens.find((token, index) => index !== wordIndex && isKanaToken(normalizeJapaneseToken(token)));
   const phonetic = readingToken
     ? toHiragana(normalizeJapaneseToken(readingToken))
     : isKanaToken(word)
       ? toHiragana(word)
       : "";
   const detailStart = readingToken ? tokens.indexOf(readingToken) + 1 : wordIndex + 1;
-  const definition = tokens
+  let definition = tokens
     .slice(detailStart)
-    .filter((token) => !isKanaToken(token))
+    .filter(isLikelyMeaningToken)
     .map(normalizeJapaneseToken)
     .filter((token) => token && token !== word)
     .join("、");
+  if (!definition) {
+    definition = tokens
+      .filter((token, index) => index !== wordIndex && token !== readingToken)
+      .filter(isLikelyMeaningToken)
+      .map(normalizeJapaneseToken)
+      .filter((token) => token && token !== word)
+      .join("、");
+  }
 
   return {
     word,
@@ -182,12 +210,66 @@ function parseJapaneseOcrLine(line) {
   };
 }
 
-function extractOcrEntries(text, language) {
+function parseJapaneseOcrLine(line) {
+  return parseJapaneseOcrTokens(extractOcrTokens(line));
+}
+
+function getWordBox(item) {
+  const box = item?.bbox || item;
+  const x0 = box?.x0 ?? box?.left ?? box?.x ?? 0;
+  const y0 = box?.y0 ?? box?.top ?? box?.y ?? 0;
+  const x1 = box?.x1 ?? (box?.left ?? box?.x ?? 0) + (box?.width ?? 0);
+  const y1 = box?.y1 ?? (box?.top ?? box?.y ?? 0) + (box?.height ?? 0);
+  return { x0, y0, x1, y1, midY: (y0 + y1) / 2, height: Math.max(1, y1 - y0) };
+}
+
+function extractEntriesFromOcrWords(ocrWords = []) {
+  const positioned = ocrWords
+    .map((item) => ({
+      text: normalizeJapaneseToken(item?.text || item?.symbols?.map((symbol) => symbol.text).join("") || ""),
+      box: getWordBox(item),
+    }))
+    .filter((item) => item.text && extractOcrTokens(item.text).length);
+  if (!positioned.length) {
+    return [];
+  }
+
+  const rows = [];
+  for (const item of positioned.sort((a, b) => a.box.midY - b.box.midY || a.box.x0 - b.box.x0)) {
+    const row = rows.find((candidate) => Math.abs(candidate.midY - item.box.midY) <= Math.max(10, item.box.height * 0.8));
+    if (row) {
+      row.items.push(item);
+      row.midY = row.items.reduce((sum, entry) => sum + entry.box.midY, 0) / row.items.length;
+    } else {
+      rows.push({ midY: item.box.midY, items: [item] });
+    }
+  }
+
+  const entriesByWord = new Map();
+  for (const row of rows) {
+    const tokens = row.items
+      .sort((a, b) => a.box.x0 - b.box.x0)
+      .flatMap((item) => extractOcrTokens(item.text));
+    const entry = parseJapaneseOcrTokens(tokens);
+    if (entry?.word && !entriesByWord.has(entry.word)) {
+      entriesByWord.set(entry.word, entry);
+    }
+  }
+  return [...entriesByWord.values()];
+}
+
+function extractOcrEntries(text, language, data = null) {
   if (language === "eng") {
     return extractWords(text);
   }
 
   const entriesByWord = new Map();
+  for (const entry of extractEntriesFromOcrWords(data?.words)) {
+    if (entry.word) {
+      entriesByWord.set(entry.word, entry);
+    }
+  }
+
   const lines = text
     .split(/\r?\n/)
     .map((line) => line.replace(/\s+/g, " ").trim())
@@ -198,7 +280,23 @@ function extractOcrEntries(text, language) {
     if (!entry?.word || entriesByWord.has(entry.word)) {
       continue;
     }
-    entriesByWord.set(entry.word, entry);
+    const existing = entriesByWord.get(entry.word);
+    entriesByWord.set(entry.word, {
+      ...entry,
+      phonetic: existing?.phonetic || entry.phonetic,
+      definition: existing?.definition || entry.definition,
+      note: existing?.definition || entry.definition || entry.note,
+    });
+  }
+
+  if (!entriesByWord.size) {
+    const tokens = extractOcrTokens(text);
+    for (let index = 0; index < tokens.length; index += 3) {
+      const entry = parseJapaneseOcrTokens(tokens.slice(index, index + 3));
+      if (entry?.word && !entriesByWord.has(entry.word)) {
+        entriesByWord.set(entry.word, entry);
+      }
+    }
   }
 
   if (entriesByWord.size) {
@@ -574,7 +672,7 @@ async function runOcr() {
     });
 
     const rawText = data.text?.trim() || "";
-    const words = extractOcrEntries(rawText, selectedLanguage);
+    const words = extractOcrEntries(rawText, selectedLanguage, data);
     await mergeWords(words);
     els.ocrStatus.textContent = words.length
       ? `识别完成，已提取 ${words.length} 个条目。`

@@ -9,8 +9,8 @@ if errorlevel 1 (
 )
 
 echo 正在启动背单词抽卡...
-echo 打开地址：http://127.0.0.1:4173/index.html?v=20260706-1
-start "" "http://127.0.0.1:4173/index.html?v=20260706-1"
+echo 打开地址：http://127.0.0.1:4173/index.html?v=20260706-2
+start "" "http://127.0.0.1:4173/index.html?v=20260706-2"
 node server.mjs
 pause
 

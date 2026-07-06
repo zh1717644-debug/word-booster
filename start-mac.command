@@ -8,7 +8,7 @@ if ! command -v node >/dev/null 2>&1; then
 fi
 
 echo "正在启动背单词抽卡..."
-echo "打开地址：http://127.0.0.1:4173/index.html?v=20260706-1"
-open "http://127.0.0.1:4173/index.html?v=20260706-1"
+echo "打开地址：http://127.0.0.1:4173/index.html?v=20260706-2"
+open "http://127.0.0.1:4173/index.html?v=20260706-2"
 node server.mjs
 
