@@ -26,7 +26,7 @@ node server.mjs
 然后打开：
 
 ```text
-http://127.0.0.1:4173/index.html?v=20260706-3
+http://127.0.0.1:4173/index.html?v=20260706-4
 ```
 
 ## 需要安装什么
