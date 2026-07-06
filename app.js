@@ -3,19 +3,19 @@ import {
   enrichWordDetails,
   generateReading,
   generateSentenceBundle,
-} from "./api.js?v=20260705-6";
+} from "./api.js?v=20260706-1";
 import {
   loadAppState,
   persistAppState,
   recordReview,
   getReviewStats,
-} from "./db.js?v=20260705-6";
+} from "./db.js?v=20260706-1";
 import {
   generateLocalReading,
   generateLocalSentenceBundle,
   getLocalAiInfo,
   loadLocalAi,
-} from "./local-ai.js?v=20260705-6";
+} from "./local-ai.js?v=20260706-1";
 
 const DEFAULT_STATE = {
   words: [],
@@ -123,9 +123,89 @@ function isUsefulToken(token) {
   return isJapaneseToken(token) ? isUsefulJapaneseToken(token) : isUsefulEnglishToken(token);
 }
 
+function isKanaToken(token) {
+  return /^[ぁ-んァ-ンー]+$/.test(token);
+}
+
+function toHiragana(token) {
+  return token.replace(/[ァ-ン]/g, (char) =>
+    String.fromCharCode(char.charCodeAt(0) - 0x60)
+  );
+}
+
+function extractOcrTokens(line) {
+  return (
+    line.match(/[A-Za-z][A-Za-z-']+|[ぁ-んァ-ン一-龥ー々〆ヵヶ]+/g) ?? []
+  ).map((token) => token.trim()).filter(Boolean);
+}
+
 function extractWords(text) {
   const matches = text.match(/[A-Za-z][A-Za-z-']+/g) ?? [];
   return [...new Set(matches.map(normalizeWord).filter(isUsefulEnglishToken))];
+}
+
+function parseJapaneseOcrLine(line) {
+  const tokens = extractOcrTokens(line);
+  if (!tokens.length) {
+    return null;
+  }
+
+  const wordIndex = tokens.findIndex((token) =>
+    isUsefulJapaneseToken(normalizeJapaneseToken(token))
+  );
+  if (wordIndex === -1) {
+    return null;
+  }
+
+  const word = normalizeJapaneseToken(tokens[wordIndex]);
+  const readingToken = tokens
+    .slice(wordIndex + 1)
+    .find((token) => isKanaToken(token) && normalizeJapaneseToken(token) !== word);
+  const phonetic = readingToken
+    ? toHiragana(normalizeJapaneseToken(readingToken))
+    : isKanaToken(word)
+      ? toHiragana(word)
+      : "";
+  const detailStart = readingToken ? tokens.indexOf(readingToken) + 1 : wordIndex + 1;
+  const definition = tokens
+    .slice(detailStart)
+    .filter((token) => !isKanaToken(token))
+    .map(normalizeJapaneseToken)
+    .filter((token) => token && token !== word)
+    .join("、");
+
+  return {
+    word,
+    phonetic,
+    definition,
+    note: definition || createDictionaryHint(word),
+  };
+}
+
+function extractOcrEntries(text, language) {
+  if (language === "eng") {
+    return extractWords(text);
+  }
+
+  const entriesByWord = new Map();
+  const lines = text
+    .split(/\r?\n/)
+    .map((line) => line.replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+
+  for (const line of lines) {
+    const entry = parseJapaneseOcrLine(line);
+    if (!entry?.word || entriesByWord.has(entry.word)) {
+      continue;
+    }
+    entriesByWord.set(entry.word, entry);
+  }
+
+  if (entriesByWord.size) {
+    return [...entriesByWord.values()];
+  }
+
+  return extractMixedWords(text, language);
 }
 
 function extractMixedWords(text, language) {
@@ -244,6 +324,14 @@ async function mergeWords(words) {
   for (const word of words) {
     const normalized = typeof word === "string" ? word : word.word;
     if (!normalized || existing.has(normalized)) {
+      if (normalized && typeof word !== "string" && existing.has(normalized)) {
+        const existingEntry = existing.get(normalized);
+        for (const key of ["phonetic", "definition", "partOfSpeech", "note"]) {
+          if (word[key]) {
+            existingEntry[key] = word[key];
+          }
+        }
+      }
       continue;
     }
     const entry =
@@ -327,9 +415,11 @@ function renderCard() {
   els.cardWord.textContent = current.word;
   els.cardMeta.textContent =
     [current.phonetic, current.partOfSpeech].filter(Boolean).join(" · ") || "暂无假名/音标";
+  const meaning = current.definition || current.translation || "";
   els.cardMeaning.textContent = [
+    `假名/音标：${current.phonetic || "暂无"}`,
+    `中文意思：${meaning || "暂无"}`,
     current.known ? "状态：已掌握" : isDue(current) ? "状态：现在该复习" : "状态：已安排复习",
-    current.definition ? `释义：${current.definition}` : "",
     current.sentence ? `例句：${current.sentence}` : current.note,
   ]
     .filter(Boolean)
@@ -484,10 +574,7 @@ async function runOcr() {
     });
 
     const rawText = data.text?.trim() || "";
-    const words =
-      selectedLanguage === "eng"
-        ? extractWords(rawText)
-        : extractMixedWords(rawText, selectedLanguage);
+    const words = extractOcrEntries(rawText, selectedLanguage);
     await mergeWords(words);
     els.ocrStatus.textContent = words.length
       ? `识别完成，已提取 ${words.length} 个条目。`
