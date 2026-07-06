@@ -3,19 +3,19 @@ import {
   enrichWordDetails,
   generateReading,
   generateSentenceBundle,
-} from "./api.js?v=20260706-2";
+} from "./api.js?v=20260706-3";
 import {
   loadAppState,
   persistAppState,
   recordReview,
   getReviewStats,
-} from "./db.js?v=20260706-2";
+} from "./db.js?v=20260706-3";
 import {
   generateLocalReading,
   generateLocalSentenceBundle,
   getLocalAiInfo,
   loadLocalAi,
-} from "./local-ai.js?v=20260706-2";
+} from "./local-ai.js?v=20260706-3";
 
 const DEFAULT_STATE = {
   words: [],
@@ -157,8 +157,12 @@ function extractWords(text) {
 
 function pickBestJapaneseWord(tokens) {
   const normalizedTokens = tokens.map(normalizeJapaneseToken).filter(Boolean);
+  const firstToken = normalizedTokens[0] || "";
   return (
     normalizedTokens.find((token) => /[一-龥]/.test(token) && /[ぁ-んァ-ンー]/.test(token)) ||
+    (isKanaToken(firstToken) && normalizedTokens.slice(1).some(isLikelyMeaningToken)
+      ? firstToken
+      : "") ||
     normalizedTokens.find((token) => /[一-龥]/.test(token) && isUsefulJapaneseToken(token)) ||
     normalizedTokens.find((token) => isKanaToken(token) && isUsefulJapaneseToken(token)) ||
     ""
@@ -181,11 +185,7 @@ function parseJapaneseOcrTokens(tokens) {
       .slice(wordIndex + 1)
       .find((token) => isKanaToken(normalizeJapaneseToken(token)) && normalizeJapaneseToken(token) !== word) ||
     tokens.find((token, index) => index !== wordIndex && isKanaToken(normalizeJapaneseToken(token)));
-  const phonetic = readingToken
-    ? toHiragana(normalizeJapaneseToken(readingToken))
-    : isKanaToken(word)
-      ? toHiragana(word)
-      : "";
+  const phonetic = readingToken ? toHiragana(normalizeJapaneseToken(readingToken)) : "";
   const detailStart = readingToken ? tokens.indexOf(readingToken) + 1 : wordIndex + 1;
   let definition = tokens
     .slice(detailStart)
@@ -212,6 +212,10 @@ function parseJapaneseOcrTokens(tokens) {
 
 function parseJapaneseOcrLine(line) {
   return parseJapaneseOcrTokens(extractOcrTokens(line));
+}
+
+function hasOcrCardDetail(entry) {
+  return Boolean(entry?.word && (entry.phonetic || entry.definition));
 }
 
 function getWordBox(item) {
@@ -251,7 +255,7 @@ function extractEntriesFromOcrWords(ocrWords = []) {
       .sort((a, b) => a.box.x0 - b.box.x0)
       .flatMap((item) => extractOcrTokens(item.text));
     const entry = parseJapaneseOcrTokens(tokens);
-    if (entry?.word && !entriesByWord.has(entry.word)) {
+    if (hasOcrCardDetail(entry) && !entriesByWord.has(entry.word)) {
       entriesByWord.set(entry.word, entry);
     }
   }
@@ -277,7 +281,7 @@ function extractOcrEntries(text, language, data = null) {
 
   for (const line of lines) {
     const entry = parseJapaneseOcrLine(line);
-    if (!entry?.word || entriesByWord.has(entry.word)) {
+    if (!hasOcrCardDetail(entry) || entriesByWord.has(entry.word)) {
       continue;
     }
     const existing = entriesByWord.get(entry.word);
@@ -293,7 +297,7 @@ function extractOcrEntries(text, language, data = null) {
     const tokens = extractOcrTokens(text);
     for (let index = 0; index < tokens.length; index += 3) {
       const entry = parseJapaneseOcrTokens(tokens.slice(index, index + 3));
-      if (entry?.word && !entriesByWord.has(entry.word)) {
+      if (hasOcrCardDetail(entry) && !entriesByWord.has(entry.word)) {
         entriesByWord.set(entry.word, entry);
       }
     }
